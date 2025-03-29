@@ -22,7 +22,7 @@ export default function App() {
   const handleAstragalusSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:5000/api/astragalus/predict', astragalusData);
+      const response = await axios.post('https://huangqi-model.onrender.com/api/astragalus/predict', astragalusData);
       setAstragalusResult(response.data);
     } catch (error) {
       console.error(error);
@@ -33,7 +33,7 @@ export default function App() {
   const handleClimateSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:5000/api/climate/predict', climateData);
+      const response = await axios.post('https://huangqi-model.onrender.com/api/climate/predict', climateData);
       setClimateResult(response.data);
     } catch (error) {
       console.error(error);
