@@ -10,15 +10,17 @@
 import pandas as pd
 import numpy as np
 import pickle
+import os
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
 # 常量定义
-MODEL_PATH = "c:/Users/74721/Desktop/gitRepo/项目/backend/astragalus_model.pkl"  # 模型保存路径
-SCALER_PATH = "c:/Users/74721/Desktop/gitRepo/项目/backend/scaler.pkl"           # 标准化器保存路径
-DATA_PATH = "final.input.txt"        # 数据文件路径
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # 当前脚本所在目录
+MODEL_PATH = os.path.join(BASE_DIR, "astragalus_model.pkl")  # 模型保存路径
+SCALER_PATH = os.path.join(BASE_DIR, "scaler.pkl")           # 标准化器保存路径
+DATA_PATH = os.path.join(BASE_DIR, "final.input.txt")        # 数据文件路径
 
 def train_and_save_model():
     """训练模型并保存到文件"""
