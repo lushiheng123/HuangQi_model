@@ -1,0 +1,14 @@
+-r requirements.txt
+
+# 开发工具
+black==23.7.0
+flake8==6.0.0
+pytest==7.4.0
+pytest-cov==4.1.0
+
+# 调试工具
+debugpy==1.6.7
+flask-debugtoolbar==0.13.1
+
+# Jupyter（可选）
+jupyter==1.0.0
