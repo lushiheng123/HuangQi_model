@@ -24,7 +24,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # 当前脚本所在目�
 MODEL_PATH = os.path.join(BASE_DIR, "climate_seed_model.pkl")  # 模型保存路径
 SELECTOR_PATH = os.path.join(BASE_DIR, "climate_selector.pkl")  # 特征选择器保存路径
 FEATURE_NAMES_PATH = os.path.join(BASE_DIR, "climate_features.json")  # 特征名称保存路径
-DATA_PATH = os.path.join(BASE_DIR, "final.input.txt")  # 数据文件路径
+DATA_PATH = os.path.join(BASE_DIR, "final_input.csv")
 
 class ClimateSeedModel:
     def __init__(self):
@@ -38,7 +38,7 @@ class ClimateSeedModel:
     def train(self):
         """完整训练流程"""
         # 加载数据
-        data = pd.read_csv(DATA_PATH, sep='\t')
+        data = pd.read_csv(DATA_PATH)
         climate_data = data.iloc[:, 4:23]  # bio1-bio19列
         target = data['source']
         print(f"数据加载成功，样本数: {data.shape[0]}")

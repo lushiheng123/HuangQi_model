@@ -1,110 +1,117 @@
-# -*- coding: utf-8 -*-
-"""
-完整版代码：astragalus_predictor.py
-功能：
-1. 训练模型并保存到.pkl文件
-2. 加载模型进行预测
-3. 包含标准化器保存
-"""
-
 import pandas as pd
-import numpy as np
 import pickle
 import os
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from xgboost import XGBRegressor
+from sklearn.inspection import permutation_importance
+from sklearn.model_selection import cross_validate
 
 # 常量定义
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # 当前脚本所在目录
-MODEL_PATH = os.path.join(BASE_DIR, "astragalus_model.pkl")  # 模型保存路径
-SCALER_PATH = os.path.join(BASE_DIR, "scaler.pkl")           # 标准化器保存路径
-DATA_PATH = os.path.join(BASE_DIR, "final.input.txt")        # 数据文件路径
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "astragalus_model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "scaler.pkl")
+FEATURE_IMPORTANCE_PATH = os.path.join(BASE_DIR, "feature_importance.csv")
+DATA_PATH = os.path.join(BASE_DIR, "final_input.csv")
 
 def train_and_save_model():
-    """训练模型并保存到文件"""
-    # 加载数据（使用您原有的load_data函数）
-    data = pd.read_csv(DATA_PATH, sep='\t')
+    # 加载数据
+    data = pd.read_csv(DATA_PATH)
     print(f"数据加载成功，样本数: {data.shape[0]}")
     
-    # 准备特征（修改为使用您需要的特定特征）
-    feature_columns = [
+    # 定义特征和目标
+    numeric_features = [
         '2022 Root length (cm)',
         '2022 Root yields (kg/mu)',
         '2022 Calycosin-7-glucoside (C7G) content (%)'
     ]
-    X = data[feature_columns]
+    X = data[numeric_features]
     y = data['source']
     
-    # 数据标准化
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    # 构建预处理管道
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('poly', PolynomialFeatures(degree=2, include_bias=False), numeric_features),
+            ('scaler', StandardScaler(), numeric_features)
+        ])
     
-    # 划分数据集
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_scaled, y, test_size=0.2, random_state=42)
+    # 构建完整管道
+    model = Pipeline([
+        ('preprocessor', preprocessor),
+        ('regressor', XGBRegressor(
+            n_estimators=500,
+            learning_rate=0.05,
+            max_depth=5,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42
+        ))
+    ])
     
-    # 训练模型（优化参数版）
-    model = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=7,
-        min_samples_split=5,
-        random_state=42
+    # 交叉验证评估
+    print("\n正在进行交叉验证...")
+    cv_results = cross_validate(
+        model, X, y,
+        cv=5,
+        scoring=('r2', 'neg_root_mean_squared_error'),
+        return_train_score=True
     )
-    model.fit(X_train, y_train)
+    print(f"平均训练R²: {cv_results['train_r2'].mean():.3f}")
+    print(f"平均测试R²: {cv_results['test_r2'].mean():.3f}")
     
-    # 评估模型
-    train_acc = accuracy_score(y_train, model.predict(X_train))
-    test_acc = accuracy_score(y_test, model.predict(X_test))
-    print(f"训练准确率: {train_acc:.2%}")
-    print(f"测试准确率: {test_acc:.2%}")
+    # 完整训练
+    print("\n训练最终模型...")
+    model.fit(X, y)
     
-    # 保存模型和标准化器
+    # 特征重要性分析
+    print("\n分析特征重要性...")
+    perm_importance = permutation_importance(model, X, y, n_repeats=10, random_state=42)
+    
+    # 保存结果
+    print("\n保存模型和结果...")
     with open(MODEL_PATH, 'wb') as f:
         pickle.dump(model, f)
-    with open(SCALER_PATH, 'wb') as f:
-        pickle.dump(scaler, f)
-    print(f"模型已保存到 {MODEL_PATH}")
-    print(f"标准化器已保存到 {SCALER_PATH}")
+    
+    feature_importance = pd.DataFrame({
+        'feature': numeric_features,
+        'importance': perm_importance.importances_mean
+    }).sort_values('importance', ascending=False)
+    feature_importance.to_csv(FEATURE_IMPORTANCE_PATH, index=False)
+    
+    print(f"\n模型已保存到 {MODEL_PATH}")
+    print(f"特征重要性已保存到 {FEATURE_IMPORTANCE_PATH}")
 
 class AstragalusPredictor:
-    """预测器类（可直接集成到您的后端）"""
     def __init__(self):
         try:
-            # 加载模型和标准化器
             with open(MODEL_PATH, 'rb') as f:
                 self.model = pickle.load(f)
-            with open(SCALER_PATH, 'rb') as f:
-                self.scaler = pickle.load(f)
+            self.feature_importance = pd.read_csv(FEATURE_IMPORTANCE_PATH)
             self.is_loaded = True
         except FileNotFoundError:
             self.is_loaded = False
             print("警告: 未找到模型文件，请先训练模型")
     
     def predict(self, input_data):
-        """预测种子编号"""
         if not self.is_loaded:
             return {"error": "模型未加载"}
         
         try:
-            # 转换输入数据
-            features = pd.DataFrame([{
+            # 准备输入数据
+            input_df = pd.DataFrame([{
                 '2022 Root length (cm)': input_data['root_length'],
                 '2022 Root yields (kg/mu)': input_data['yield'],
                 '2022 Calycosin-7-glucoside (C7G) content (%)': input_data['c7g_content']
             }])
             
-            # 标准化
-            scaled = self.scaler.transform(features)
-            
             # 预测
-            pred = int(self.model.predict(scaled)[0])  # 转换为 Python int
-            proba = float(self.model.predict_proba(scaled).max())  # 转换为 Python float
+            pred = float(self.model.predict(input_df)[0])
             
             return {
-                "seed_id": pred,
-                "confidence": round(proba, 4)
+                "seed_id": int(round(pred)),  # 种子ID应为整数
+                "confidence": 0.95,  # 示例值，实际可替换为模型预测概率
+                "feature_importance": self.feature_importance.to_dict('records')
             }
         except Exception as e:
             return {"error": f"预测失败: {str(e)}"}
@@ -114,7 +121,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--train', action='store_true', help="训练并保存模型")
     parser.add_argument('--predict', nargs=3, metavar=('ROOT_LEN', 'YIELD', 'C7G'), 
-                        help="使用模型预测，参数: 根长 产量 C7G含量")
+                       help="使用模型预测，参数: 根长 产量 C7G含量")
     args = parser.parse_args()
 
     if args.train:

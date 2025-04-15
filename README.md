@@ -7,3 +7,5 @@ git branch -M main
 git remote add origin git@github.com:lushiheng123/HuangQi_model.git
 git push -u origin main
 ```
+
+
