@@ -1,30 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
-import { CheckIcon } from '@heroicons/react/20/solid';
-
-import {
-    RadarChart,
-    PolarGrid,
-    PolarAngleAxis,
-    PolarRadiusAxis,
-    Radar,
-    Legend,
-    Tooltip,
-    ResponsiveContainer
-} from 'recharts';
+import { Listbox } from '@headlessui/react';
+import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid';
 
 export default function Hero() {
-    const { t } = useTranslation();
-
-    // 雷达图相关状态
-    const [modelMetrics, setModelMetrics] = useState([]);
-    const [predictions, setPredictions] = useState({});
-
+    const { t, i18n } = useTranslation();
+    const [selectedModel, setSelectedModel] = useState(null);
+    const [availableModels, setAvailableModels] = useState([]);
     const [astragalusData, setAstragalusData] = useState({
         root_length: '',
         yield: '',
-        c7g_content: ''
+        c7g_content: '',
+        model_name: 'XGBoost', // 默认模型
     });
     const [climateData, setClimateData] = useState({});
     const [astragalusResult, setAstragalusResult] = useState(null);
@@ -52,39 +40,26 @@ export default function Hero() {
 
     // 获取可用模型列表
     useEffect(() => {
-        const fetchMetrics = async () => {
+        const fetchModels = async () => {
             try {
-                const response = await axios.get('http://localhost:5000/api/astragalus/model-metrics');
-                console.log(response)
-                setModelMetrics(response.data.metrics);
+                const response = await axios.get('http://localhost:5000/api/astragalus/models');
+                setAvailableModels(response.data.models);
+                setSelectedModel(response.data.default);
             } catch (error) {
-                console.error('获取模型指标失败:', error);
+                console.error('Failed to fetch models:', error);
             }
         };
-        fetchMetrics();
-
+        fetchModels();
     }, []);
 
     const handleAstragalusSubmit = async (e) => {
         e.preventDefault();
         try {
-            // 对每个模型都进行预测
-            const modelResults = {};
-            for (const model of ["XGBoost", "RandomForest", "KNN", "ANN"]) {
-                const response = await axios.post('http://localhost:5000/api/astragalus/predict', {
-                    ...astragalusData,
-                    model_name: model
-                });
-                modelResults[model] = response.data;
-            }
-            setPredictions(modelResults);
-            // 设置最佳预测结果
-            const bestPrediction = Object.entries(modelResults)
-                .reduce((best, [model, result]) =>
-                    result.confidence > best.confidence ? result : best,
-                    { confidence: -1 }
-                );
-            setAstragalusResult(bestPrediction);
+            const response = await axios.post('http://localhost:5000/api/astragalus/predict', {
+                ...astragalusData,
+                model_name: selectedModel
+            });
+            setAstragalusResult(response.data);
         } catch (error) {
             console.error(error);
             alert(t('prediction_failed'));
@@ -102,75 +77,22 @@ export default function Hero() {
 
         }
     };
-
-    const renderPredictionResults = () => {
-        if (!predictions || Object.keys(predictions).length === 0) return null;
-
-        const radarData = modelMetrics.map(metric => ({
-            subject: metric.Model,
-            '训练准确率': Math.max(metric.Train_R2_mean * 100, 0),
-            '测试准确率': Math.max(metric.Test_R2_mean * 100, 0)
-        }));
-
-        return (
-            <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-xl font-semibold text-gray-800 mb-6">
-                    {t('model_comparison')}
-                </h3>
-
-                {/* 雷达图 */}
-                <div className="h-96 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart data={radarData}>
-                            <PolarGrid />
-                            <PolarAngleAxis dataKey="subject" />
-                            <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                            <Radar
-                                name="训练准确率"
-                                dataKey="训练准确率"
-                                stroke="#8884d8"
-                                fill="#8884d8"
-                                fillOpacity={0.6}
-                            />
-                            <Radar
-                                name="测试准确率"
-                                dataKey="测试准确率"
-                                stroke="#82ca9d"
-                                fill="#82ca9d"
-                                fillOpacity={0.6}
-                            />
-                            <Legend />
-                            <Tooltip />
-                        </RadarChart>
-                    </ResponsiveContainer>
-                </div>
-
-                {/* 预测结果列表 */}
-                <div className="mt-6 grid grid-cols-2 gap-4">
-                    {Object.entries(predictions).map(([model, result]) => (
-                        <div key={model}
-                            className={`p-4 rounded-lg ${result === astragalusResult
-                                ? 'bg-blue-50 border-2 border-blue-200'
-                                : 'bg-gray-50'
-                                }`}
-                        >
-                            <div className="flex items-center justify-between">
-                                <span className="font-medium text-gray-700">{model}</span>
-                                {result === astragalusResult && (
-                                    <CheckIcon className="h-5 w-5 text-blue-600" />
-                                )}
-                            </div>
-                            <div className="mt-2 text-sm text-gray-600">
-                                <div>预测结果: {result.source_id}</div>
-                                <div>置信度: {(result.confidence * 100).toFixed(2)}%</div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
+    //新
+    const fetchModelMetrics = async () => {
+        try {
+            const response = await axios.get('http://localhost:5000/api/astragalus/model-metrics');
+            const { metrics } = response.data;
+            // 处理数据用于图表展示
+            const chartData = metrics.map(item => ({
+                name: item.name,
+                '训练集 R²': item.metrics.train.r2,
+                '测试集 R²': item.metrics.test.r2
+            }));
+            // 在这里更新你的图表数据状态
+        } catch (error) {
+            console.error('获取模型指标失败:', error);
+        }
     };
-
     return (
         <div className="min-h-screen bg-gray-50">
 
@@ -200,6 +122,51 @@ export default function Hero() {
                             <h2 className="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200">
                                 <span className="text-blue-600">{t('astragalus_prediction')}</span>
                             </h2>
+
+                            {/* 模型选择下拉菜单 */}
+                            <div className="mb-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    {t('select_model')}
+                                </label>
+                                <Listbox value={selectedModel} onChange={setSelectedModel}>
+                                    <div className="relative mt-1">
+                                        <Listbox.Button className="relative w-full cursor-default rounded-lg bg-white py-2 pl-3 pr-10 text-left border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                            <span className="block truncate">{selectedModel}</span>
+                                            <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                                                <ChevronUpDownIcon
+                                                    className="h-5 w-5 text-gray-400"
+                                                    aria-hidden="true"
+                                                />
+                                            </span>
+                                        </Listbox.Button>
+                                        <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
+                                            {availableModels.map((model) => (
+                                                <Listbox.Option
+                                                    key={model}
+                                                    value={model}
+                                                    className={({ active }) =>
+                                                        `relative cursor-default select-none py-2 pl-10 pr-4 ${active ? 'bg-blue-100 text-blue-900' : 'text-gray-900'
+                                                        }`
+                                                    }
+                                                >
+                                                    {({ selected }) => (
+                                                        <>
+                                                            <span className={`block truncate ${selected ? 'font-medium' : 'font-normal'}`}>
+                                                                {model}
+                                                            </span>
+                                                            {selected ? (
+                                                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-600">
+                                                                    <CheckIcon className="h-5 w-5" aria-hidden="true" />
+                                                                </span>
+                                                            ) : null}
+                                                        </>
+                                                    )}
+                                                </Listbox.Option>
+                                            ))}
+                                        </Listbox.Options>
+                                    </div>
+                                </Listbox>
+                            </div>
 
                             <form onSubmit={handleAstragalusSubmit}>
                                 <div className="space-y-4">
@@ -276,9 +243,6 @@ export default function Hero() {
                                 </div>
                             )}
                         </div>
-
-                        {/* 添加预测结果和雷达图 */}
-                        {renderPredictionResults()}
 
                         {/* 原有的 Climate 表单 */}
                         <div className="bg-white rounded-lg shadow-md p-6">

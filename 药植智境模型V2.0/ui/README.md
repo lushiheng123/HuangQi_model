@@ -49,4 +49,4 @@ python astragalus_predictor.py --predict RandomForest 32.5 142 0.038
 
 ![alt text](README_Images/README/image-3.png)
 
-# 
+# 写另一个模型的接口
